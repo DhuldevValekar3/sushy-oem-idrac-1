@@ -23,6 +23,7 @@ from sushy.resources.oem import base as oem_base
 from sushy_oem_idrac import asynchronous
 from sushy_oem_idrac import constants
 from sushy_oem_idrac import utils
+from ironic.drivers.modules.redfish import utils as redfish_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -137,11 +138,13 @@ VFDD\
             except (sushy.exceptions.ServerSideError,
                     sushy.exceptions.BadRequestError) as exc:
                 LOG.error('Dell OEM clear job queue failed, %s', err_msg)
-                raise sushy.exceptions.ServerSideError(error=exc)
+                raise
 
     def reset_idrac(self,manager=None):
         payload = {"ResetType":"GracefulRestart"}
-
+        url = self._conn._url
+        redfish_node_ip = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', 
+                                    url).group()
         try:
             reset_job_response = asynchronous.http_call(
                             self._conn, 'post',
@@ -151,21 +154,16 @@ VFDD\
         except (sushy.exceptions.ServerSideError,
                 sushy.exceptions.BadRequestError) as exc:
             LOG.error('Dell OEM reset idrac failed, Reason : %s', exc)
-            raise sushy.exceptions.ServerSideError(error=exc)
+            raise
 
-        LOG.info("iDRAC has reset, Waiting for the iDRAC to become ready")
-        if(utils.wait_for_idrac_ready(self) == True):
-            LOG.info("Dell OEM iDRAC reset successfuly")
-            return reset_job_response
-        else:
-            err_msg = 'Timeout reched to become iDRAC ready'
-            LOG.error(err_msg)
-            raise sushy.exceptions.ConnectionError(error=err_msg)
-
-    def known_good_state(self,manager=None):
-        delete_job_response = self.clear_job_queue(job_ids=['JID_CLEARALL'])
-        reset_job_response = self.reset_idrac(manager=manager)
-        return [delete_job_response, reset_job_response]
+        LOG.debug("iDRAC was reset, waiting for return to operational state")
+        redfish_utils.wait_for_host(redfish_node_ip)
+        LOG.info("The iDRAC has become pingable")
+        LOG.info("Waiting for the iDRAC to become ready")
+        utils.wait_until_idrac_is_ready(self,
+                        retries=constants.IDRAC_IS_READY_RETRIES,
+                        retry_delay=constants.IDRAC_IS_READY_RETRY_DELAY_SEC)
+        return reset_job_response
 
     def get_unfinished_jobs(self):
         jobs_expand_uri = '%s%s' %(self.get_jobs_uri, self.JOB_EXPAND)
@@ -184,7 +182,7 @@ VFDD\
         except (sushy.exceptions.ServerSideError,
                 sushy.exceptions.BadRequestError) as exc:
             LOG.error('Dell OEM clear job queue failed, %s', err_msg)
-            raise sushy.exceptions.ServerSideError(error=exc)
+            raise
 
     def set_virtual_boot_device(self, device, persistent=False,
                                 manager=None, system=None):

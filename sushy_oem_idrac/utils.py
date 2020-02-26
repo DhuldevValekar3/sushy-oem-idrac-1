@@ -16,12 +16,12 @@ import retrying
 
 import sushy
 from sushy_oem_idrac import asynchronous
+from sushy_oem_idrac import constants
 
 LOG = logging.getLogger(__name__)
 
-_IDRAC_IS_READY_RETRIES = 96
-_IDRAC_IS_READY_RETRY_DELAY_SEC =10
-
+IDRAC_READY_STATUS = 'Ready'
+IDRAC_READY_STATUS_CODE = 200
 
 def reboot_system(system):
     if system.power_state != sushy.POWER_STATE_OFF:
@@ -44,31 +44,60 @@ def reboot_system(system):
 
     LOG.info('System powered ON')
 
-@retrying.retry(
-    retry_on_exception=lambda exception: isinstance(exception, Exception),
-    stop_max_attempt_number=_IDRAC_IS_READY_RETRIES,
-    wait_fixed=_IDRAC_IS_READY_RETRY_DELAY_SEC * 1000)
-def wait_for_idrac_ready(oem_manager):
-    is_ready_response = is_idrac_ready(oem_manager)
-    if "LCStatus" in is_ready_response:
-         LOG.info("idrac for node is ready")
-         return True
-    else:
-        err_msg = ('idrac for node is not ready,'
-                'Failed to perform drac operation, Retrying it' )
-        raise sushy.exception.ConnectionError(error=err_msg)
+def wait_until_idrac_is_ready(oem_manager, retries=None, retry_delay=None):
+    """Waits until the iDRAC is in a ready state
+
+    :param retries: The number of times to check if the iDRAC is
+                    ready. If None, the value of ready_retries that
+                    was provided when the object was created is
+                    used.
+    :param retry_delay: The number of seconds to wait between
+                        retries. If None, the value of
+                        ready_retry_delay that was provided when the
+                        object was created is used.
+    """
+
+    if retries is None:
+        retries = constants.IDRAC_IS_READY_RETRIES
+
+    if retry_delay is None:
+        retry_delay = constants.IDRAC_IS_READY_RETRY_DELAY_SEC
+
+    while retries > 0:
+        LOG.debug("Checking to see if the iDRAC is ready")
+
+        if is_idrac_ready(oem_manager):
+            LOG.debug("The iDRAC is ready")
+            return
+
+        LOG.debug("The iDRAC is not ready")
+        retries -= 1
+        if retries > 0:
+            time.sleep(retry_delay)
+
+    if retries == 0:
+        err_msg = "Timed out waiting for the iDRAC to become ready after reset"
+        LOG.error(err_msg)
+        raise
 
 def is_idrac_ready(oem_manager):
+    """Indicates if the iDRAC is ready to accept commands
 
-    try:
-        response = asynchronous.http_call(
-                            oem_manager._conn, 'post',
-                            oem_manager.get_remote_service_api_uri,
-                            headers=oem_manager.HEADERS,
-                            data={},
-                            verify=False)
-        data = response.json()
-    except Exception as err:
-        return err
-    return data
+       Returns a boolean indicating if the iDRAC is ready to accept
+       commands.
+
+    :returns: Boolean indicating iDRAC readiness
+    """
+
+    response = asynchronous.http_call(
+                    oem_manager._conn, 'post',
+                    oem_manager.get_remote_service_api_uri,
+                    headers=oem_manager.HEADERS,
+                    data={},
+                    verify=False)
+    if response.status_code != IDRAC_READY_STATUS_CODE:
+        return False
+    data = response.json()
+    ls_status = data['LCStatus']
+    return ls_status == IDRAC_READY_STATUS
 
