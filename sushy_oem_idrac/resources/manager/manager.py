@@ -141,9 +141,7 @@ VFDD\
 
     def reset_idrac(self,manager=None):
         payload = {"ResetType":"GracefulRestart"}
-        url = self._conn._url
-        redfish_node_ip = re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', 
-                                    url).group()
+
         try:
             reset_job_response = asynchronous.http_call(
                             self._conn, 'post',
