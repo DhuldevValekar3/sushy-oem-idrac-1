@@ -44,42 +44,6 @@ def reboot_system(system):
 
     LOG.info('System powered ON')
 
-def wait_until_idrac_is_ready(oem_manager, retries=None, retry_delay=None):
-    """Waits until the iDRAC is in a ready state
-
-    :param retries: The number of times to check if the iDRAC is
-                    ready. If None, the value of ready_retries that
-                    was provided when the object was created is
-                    used.
-    :param retry_delay: The number of seconds to wait between
-                        retries. If None, the value of
-                        ready_retry_delay that was provided when the
-                        object was created is used.
-    """
-
-    if retries is None:
-        retries = constants.IDRAC_IS_READY_RETRIES
-
-    if retry_delay is None:
-        retry_delay = constants.IDRAC_IS_READY_RETRY_DELAY_SEC
-
-    while retries > 0:
-        LOG.debug("Checking to see if the iDRAC is ready")
-
-        if is_idrac_ready(oem_manager):
-            LOG.debug("The iDRAC is ready")
-            return
-
-        LOG.debug("The iDRAC is not ready")
-        retries -= 1
-        if retries > 0:
-            time.sleep(retry_delay)
-
-    if retries == 0:
-        err_msg = "Timed out waiting for the iDRAC to become ready after reset"
-        LOG.error(err_msg)
-        raise
-
 def is_idrac_ready(oem_manager):
     """Indicates if the iDRAC is ready to accept commands
 
@@ -98,6 +62,6 @@ def is_idrac_ready(oem_manager):
     if response.status_code != IDRAC_READY_STATUS_CODE:
         return False
     data = response.json()
-    ls_status = data['LCStatus']
-    return ls_status == IDRAC_READY_STATUS
+    lc_status = data['LCStatus']
+    return lc_status == IDRAC_READY_STATUS
 

@@ -23,7 +23,6 @@ from sushy.resources.oem import base as oem_base
 from sushy_oem_idrac import asynchronous
 from sushy_oem_idrac import constants
 from sushy_oem_idrac import utils
-from ironic.drivers.modules.redfish import utils as redfish_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -156,14 +155,16 @@ VFDD\
             LOG.error('Dell OEM reset idrac failed, Reason : %s', exc)
             raise
 
-        LOG.debug("iDRAC was reset, waiting for return to operational state")
-        redfish_utils.wait_for_host(redfish_node_ip)
-        LOG.info("The iDRAC has become pingable")
-        LOG.info("Waiting for the iDRAC to become ready")
-        utils.wait_until_idrac_is_ready(self,
-                        retries=constants.IDRAC_IS_READY_RETRIES,
-                        retry_delay=constants.IDRAC_IS_READY_RETRY_DELAY_SEC)
         return reset_job_response
+
+    def is_idrac_ready(self):
+        """Indicates if the iDRAC is ready to accept commands
+            Returns a boolean indicating if the iDRAC is ready to accept
+            commands.
+        :returns: Boolean indicating iDRAC readiness
+        """
+
+        return utils.is_idrac_ready(self)
 
     def get_unfinished_jobs(self):
         jobs_expand_uri = '%s%s' %(self.get_jobs_uri, self.JOB_EXPAND)
