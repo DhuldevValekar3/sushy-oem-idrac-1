@@ -44,6 +44,11 @@ class DellManagerIdRefField(base.CompositeField):
         lambda key, **kwargs: key.startswith(
             'DellLCService'))
 
+    idrac_card_service = common.IdRefField(
+        lambda key, **kwargs: key.startswith(
+            'DelliDRACCardService'))
+
+
 class DellManagerExtension(oem_base.OEMResourceBase):
 
     _actions = DellManagerActionsField('Actions')
@@ -59,6 +64,7 @@ class DellManagerExtension(oem_base.OEMResourceBase):
     HEADERS = {'content-type': 'application/json'}
     CLEAR_JOBS_URI = '/Actions/DellJobService.DeleteJobQueue'
     REMOTE_API_STATUS_URI = '/Actions/DellLCService.GetRemoteServicesAPIStatus'
+    IDRAC_RESET_URI = '/Actions/DelliDRACCardService.iDRACReset'
     JOB_EXPAND = '?$expand=.($levels=1)'
 
     # NOTE(etingof): iDRAC job would fail if this XML has
@@ -115,8 +121,13 @@ VFDD\
         return ('%s%s' %
                 (self._links.lc_service.resource_uri,
                 self.REMOTE_API_STATUS_URI))
+    @property
+    def get_idrac_reset_uri(self):
+        return ('%s%s' %
+                (self._links.idrac_card_service.resource_uri,
+                self.IDRAC_RESET_URI))
 
-    def clear_job_queue(self, job_ids=['JID_CLEARALL']):
+    def delete_jobs(self, task, job_ids=['JID_CLEARALL']):
 
         if job_ids is None:
             return None
@@ -136,21 +147,25 @@ VFDD\
 
             except (sushy.exceptions.ServerSideError,
                     sushy.exceptions.BadRequestError) as exc:
-                LOG.error('Dell OEM clear job queue failed, %s', err_msg)
+                LOG.error('Dell OEM clear job queue failed, on node %(node)s'
+                           'Reason : %(reason)s' %
+                           {'node': task.node.uuid, 'reason': exc})
                 raise
 
-    def reset_idrac(self,manager=None):
-        payload = {"ResetType":"GracefulRestart"}
+    def reset_idrac(self, task):
+        payload = {"Force":"Graceful"}
 
         try:
             reset_job_response = asynchronous.http_call(
                             self._conn, 'post',
-                            manager._actions.reset.target_uri,
+                            self.get_idrac_reset_uri,
                             data=(payload))
 
         except (sushy.exceptions.ServerSideError,
                 sushy.exceptions.BadRequestError) as exc:
-            LOG.error('Dell OEM reset idrac failed, Reason : %s', exc)
+            LOG.error('Dell OEM reset idrac failed, on node %(node)s'
+                        'Reason : %(reason)' %
+                        {'node':task.node.uuid, 'reason':exc})
             raise
 
         return reset_job_response
@@ -164,7 +179,7 @@ VFDD\
 
         return utils.is_idrac_ready(self)
 
-    def get_unfinished_jobs(self):
+    def get_unfinished_jobs(self, task):
         jobs_expand_uri = '%s%s' %(self.get_jobs_uri, self.JOB_EXPAND)
         unfinished_jobs = []
         try:
@@ -180,7 +195,9 @@ VFDD\
             return unfinished_jobs
         except (sushy.exceptions.ServerSideError,
                 sushy.exceptions.BadRequestError) as exc:
-            LOG.error('Dell OEM clear job queue failed, %s', err_msg)
+            LOG.error('Dell OEM clear job queue failed, on node %(node)s'
+                        'Reason : %(reason)s' %
+                        {'node':task.node.uuid, 'reason':exc})
             raise
 
     def set_virtual_boot_device(self, device, persistent=False,
