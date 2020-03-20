@@ -152,8 +152,8 @@ VFDD\
                            {'node': task.node.uuid, 'reason': exc})
                 raise
 
-    def reset_idrac(self, task):
-        payload = {"Force":"Graceful"}
+    def reset_idrac(self, task, force='Graceful'):
+        payload = {"Force":force}
 
         try:
             reset_job_response = asynchronous.http_call(
