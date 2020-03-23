@@ -12,11 +12,9 @@
 
 import logging
 import time
-import retrying
 
 import sushy
 from sushy_oem_idrac import asynchronous
-from sushy_oem_idrac import constants
 
 LOG = logging.getLogger(__name__)
 
