@@ -143,7 +143,6 @@ VFDD\
                         headers = self.HEADERS,
                         data = payload,
                         verify = False)
-                return delete_job_response
 
             except (sushy.exceptions.ServerSideError,
                     sushy.exceptions.BadRequestError) as exc:
@@ -151,6 +150,7 @@ VFDD\
                            'Reason : %(reason)s' %
                            {'node': task.node.uuid, 'reason': exc})
                 raise
+        return delete_job_response
 
     def reset_idrac(self, task, force='Graceful'):
         payload = {"Force":force}
