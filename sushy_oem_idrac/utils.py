@@ -18,8 +18,6 @@ from sushy_oem_idrac import asynchronous
 
 LOG = logging.getLogger(__name__)
 
-IDRAC_READY_STATUS = 'Ready'
-IDRAC_READY_STATUS_CODE = 200
 
 def reboot_system(system):
     if system.power_state != sushy.POWER_STATE_OFF:
@@ -41,25 +39,4 @@ def reboot_system(system):
         system.refresh()
 
     LOG.info('System powered ON')
-
-def is_idrac_ready(oem_manager):
-    """Indicates if the iDRAC is ready to accept commands
-
-       Returns a boolean indicating if the iDRAC is ready to accept
-       commands.
-
-    :returns: Boolean indicating iDRAC readiness
-    """
-
-    response = asynchronous.http_call(
-                    oem_manager._conn, 'post',
-                    oem_manager.get_remote_service_api_uri,
-                    headers=oem_manager.HEADERS,
-                    data={},
-                    verify=False)
-    if response.status_code != IDRAC_READY_STATUS_CODE:
-        return False
-    data = response.json()
-    lc_status = data['LCStatus']
-    return lc_status == IDRAC_READY_STATUS
 

@@ -23,6 +23,7 @@ from sushy.resources.oem import base as oem_base
 from sushy_oem_idrac import asynchronous
 from sushy_oem_idrac import constants
 from sushy_oem_idrac import utils
+from sushy import utils as sushy_utils
 
 LOG = logging.getLogger(__name__)
 
@@ -31,28 +32,10 @@ class DellManagerActionsField(base.CompositeField):
         lambda key, **kwargs: key.endswith(
             '#OemManager.ImportSystemConfiguration'))
 
-class DellManagerIdRefField(base.CompositeField):
-    job_service = common.IdRefField(
-        lambda key, **kwargs: key.startswith(
-            'DellJobService'))
-
-    jobs = common.IdRefField(
-        lambda key, **kwargs: key.startswith(
-            'Jobs'))
-
-    lc_service = common.IdRefField(
-        lambda key, **kwargs: key.startswith(
-            'DellLCService'))
-
-    idrac_card_service = common.IdRefField(
-        lambda key, **kwargs: key.startswith(
-            'DelliDRACCardService'))
-
 
 class DellManagerExtension(oem_base.OEMResourceBase):
 
     _actions = DellManagerActionsField('Actions')
-    _links = DellManagerIdRefField('Links')
 
     ACTION_DATA = {
         'ShareParameters': {
@@ -60,12 +43,6 @@ class DellManagerExtension(oem_base.OEMResourceBase):
         },
         'ImportBuffer': None
     }
-
-    HEADERS = {'content-type': 'application/json'}
-    CLEAR_JOBS_URI = '/Actions/DellJobService.DeleteJobQueue'
-    REMOTE_API_STATUS_URI = '/Actions/DellLCService.GetRemoteServicesAPIStatus'
-    IDRAC_RESET_URI = '/Actions/DelliDRACCardService.iDRACReset'
-    JOB_EXPAND = '?$expand=.($levels=1)'
 
     # NOTE(etingof): iDRAC job would fail if this XML has
     # insignificant whitespaces
@@ -109,96 +86,62 @@ VFDD\
         return self._actions.import_system_configuration.target_uri
 
     @property
-    def job_service_uri(self):
-        return self._links.job_service.resource_uri
-
-    @property
-    def get_jobs_uri(self):
-        return self._links.jobs.resource_uri
-
-    @property
-    def get_remote_service_api_uri(self):
-        return ('%s%s' %
-                (self._links.lc_service.resource_uri,
-                self.REMOTE_API_STATUS_URI))
-    @property
-    def get_idrac_reset_uri(self):
-        return ('%s%s' %
-                (self._links.idrac_card_service.resource_uri,
-                self.IDRAC_RESET_URI))
-
-    def delete_jobs(self, task, job_ids=['JID_CLEARALL']):
-
-        if job_ids is None:
-            return None
-
-        delete_job_queue_uri = '%s%s' % (self.job_service_uri, self.CLEAR_JOBS_URI)
-        for job_id in job_ids:
-            payload = {'JobID':job_id}
-
-            try:
-                delete_job_response = asynchronous.http_call(
-                        self._conn, 'post',
-                        delete_job_queue_uri,
-                        headers = self.HEADERS,
-                        data = payload,
-                        verify = False)
-
-            except (sushy.exceptions.ServerSideError,
-                    sushy.exceptions.BadRequestError) as exc:
-                LOG.error('Dell OEM clear job queue failed, on node %(node)s'
-                           'Reason : %(reason)s' %
-                           {'node': task.node.uuid, 'reason': exc})
-                raise
-        return delete_job_response
-
-    def reset_idrac(self, task, force='Graceful'):
-        payload = {"Force":force}
-
-        try:
-            reset_job_response = asynchronous.http_call(
-                            self._conn, 'post',
-                            self.get_idrac_reset_uri,
-                            data=(payload))
-
-        except (sushy.exceptions.ServerSideError,
-                sushy.exceptions.BadRequestError) as exc:
-            LOG.error('Dell OEM reset idrac failed, on node %(node)s'
-                        'Reason : %(reason)' %
-                        {'node':task.node.uuid, 'reason':exc})
-            raise
-
-        return reset_job_response
-
-    def is_idrac_ready(self):
-        """Indicates if the iDRAC is ready to accept commands
-            Returns a boolean indicating if the iDRAC is ready to accept
-            commands.
-        :returns: Boolean indicating iDRAC readiness
+    @sushy_utils.cache_it
+    def idrac_card_service(self):
         """
+        Returns a "DelliDRACCardService" object
+        :raises: MissingAttributeError if '@odata.id' field is missing.
+        """
+        path = sushy_utils.get_sub_resource_path_by(
+            self, ["Links", "Oem", "Dell", "DelliDRACCardService"], is_collection=False)
 
-        return utils.is_idrac_ready(self)
+        from sushy_oem_idrac.resources.manager import idrac_card_service
 
-    def get_unfinished_jobs(self, task):
-        jobs_expand_uri = '%s%s' %(self.get_jobs_uri, self.JOB_EXPAND)
-        unfinished_jobs = []
-        try:
-            response = asynchronous.http_call(
-                    self._conn, 'get',
-                    jobs_expand_uri,
-                    verify = False)
-            data = response.json()
-            for job in data[u'Members']:
-                if((job[u'JobState'] == 'Scheduled') or
-                      (job[u'JobState'] == 'Running')):
-                    unfinished_jobs.append(job['Id'])
-            return unfinished_jobs
-        except (sushy.exceptions.ServerSideError,
-                sushy.exceptions.BadRequestError) as exc:
-            LOG.error('Dell OEM clear job queue failed, on node %(node)s'
-                        'Reason : %(reason)s' %
-                        {'node':task.node.uuid, 'reason':exc})
-            raise
+        return idrac_card_service.DelliDRACCardService(self._conn, path,
+                                self.redfish_version, self.registries)
+    @property
+    @sushy_utils.cache_it
+    def lc_service(self):
+        """
+        Returns a "DellLCService" object
+        :raises: MissingAttributeError if '@odata.id' field is missing.
+        """
+        path = sushy_utils.get_sub_resource_path_by(
+            self, ["Links", "Oem", "Dell", "DellLCService"], is_collection=False)
+
+        from sushy_oem_idrac.resources.manager import lc_service
+
+        return lc_service.DellLCService(self._conn, path,
+                                self.redfish_version, self.registries)
+    @property
+    @sushy_utils.cache_it
+    def job_service(self):
+        """
+        Returns a "DellJobService" object
+        :raises: MissingAttributeError if '@odata.id' field is missing.
+        """
+        path = sushy_utils.get_sub_resource_path_by(
+            self, ["Links", "Oem", "Dell", "DellJobService"], is_collection=False)
+
+        from sushy_oem_idrac.resources.manager import job_service
+
+        return job_service.DellJobService(self._conn, path,
+                                self.redfish_version, self.registries)
+    @property
+    @sushy_utils.cache_it
+    def job_collection(self):
+        """
+        Returns a "DellJobCollection" object
+        :raises: MissingAttributeError if '@odata.id' field is missing.
+        """
+        path = sushy_utils.get_sub_resource_path_by(
+            self, ["Links", "Oem", "Dell", "Jobs"], is_collection=False)
+
+        from sushy_oem_idrac.resources.manager import jobs
+
+        return jobs.DellJobCollection(self._conn, path,
+                                self.redfish_version, self.registries)
+
 
     def set_virtual_boot_device(self, device, persistent=False,
                                 manager=None, system=None):
