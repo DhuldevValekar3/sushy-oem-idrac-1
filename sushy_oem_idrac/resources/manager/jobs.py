@@ -33,6 +33,7 @@ class DellJobCollection(base.ResourceBase):
         job_expand_uri = '%s%s' %(self._path, self.JOB_EXPAND)
 
         unfinished_jobs = []
+        LOG.debug('Filtering unfnished jobs...')
         job_response = self._conn.get(job_expand_uri, verify=False)
         data = job_response.json()
 
@@ -41,5 +42,6 @@ class DellJobCollection(base.ResourceBase):
                 (job[u'JobState'] == 'Running')):
 
                 unfinished_jobs.append(job['Id'])
+        LOG.info('Filtered unfinished jobs')
         return unfinished_jobs
 
